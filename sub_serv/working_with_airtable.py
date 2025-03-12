@@ -69,7 +69,7 @@ class BaseData:
         hashed_password = self.__encrypt(password)
         user = self.__find_user(username)
         if user is None:
-            raise IncorrectUser("The username is incorrect")
+            raise IncorrectUsername("The username is incorrect")
         if (user["fields"]["Password"] != hashed_password):
             raise IncorrectPassword("The password is incorrect")
         return user["id"]

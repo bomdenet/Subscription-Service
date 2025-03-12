@@ -2,11 +2,11 @@ class AirtableException(Exception):
     pass
 
 
-class ShortPassword(AirtableException):
+class ShortUsername(AirtableException):
     pass
 
 
-class ShortUsername(AirtableException):
+class ShortPassword(AirtableException):
     pass
 
 
@@ -18,7 +18,7 @@ class IncorrectCharectersInPassword(AirtableException):
     pass
 
 
-class IncorrectUser(AirtableException):
+class IncorrectUsername(AirtableException):
     pass
 
 

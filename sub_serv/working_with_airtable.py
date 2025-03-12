@@ -6,15 +6,12 @@ from datetime import datetime
 
 class BaseData:
     def __init__(self, token, appToken):
-        self.__table = Api(token).table(appToken, "Base")
+        self.__user_table = Api(token).table(appToken, "Users")
+        self.__payment_table = Api(token).table(appToken, "Payment")
         self.min_len_username = 4
         self.min_len_password = 8
         self.characters_in_username = "abcdefghijklmnopqrstuvwxyz0123456789"
         self.incorrect_characters_in_password = " *"
-
-    def write_table(self):
-        records = self.__table.all()
-        print(records)
     
     def __encrypt(self, text):
         return hashlib.sha256(text.encode()).hexdigest()
@@ -36,7 +33,7 @@ class BaseData:
         return True
 
     def __find_user(self, username):
-        find_data = self.__table.all(formula=f"Username='{username}'")
+        find_data = self.__user_table.all(formula=f"Username='{username}'")
         if (len(find_data) == 0):
             return None
         return find_data[0]
@@ -60,7 +57,7 @@ class BaseData:
             raise UsernameIsBusy("The username is busy")
         
         hashed_password = self.__encrypt(password)
-        return self.__table.create({
+        return self.__user_table.create({
             "Username": username,
             "Password": hashed_password,
             "Is admin": False,
@@ -78,4 +75,4 @@ class BaseData:
         return user["id"]
 
     def get_data(self, id):
-        return self.__table.get(id)["fields"]
+        return self.__user_table.get(id)["fields"]

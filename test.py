@@ -1,10 +1,19 @@
 import os
 from sub_serv import *
+from datetime import datetime
+
+
+def write_info(info):
+    if info.get("Is admin", False):
+        print(f"Hello admin {info['Username']}!")
+    else:
+        print(f"Hello {info['Username']}!")
+    print(f"Your balance: {info['Balance']}")
+    # При определении даты и ремени необходимо не забыть про часовые пояса, в бд использовать время utc
 
 
 if __name__ == "__main__":
     base = BaseData(os.getenv("AIRTABLE_TOKEN"), os.getenv("APP_AIRTABLE_TOKEN"))
-    base.write_table()
 
     while True:
         print("Do you want to register or log in(reg/log)? ", end="")
@@ -34,6 +43,7 @@ if __name__ == "__main__":
         if param == "reg":
             if type(result_check_correct_password) is bool:
                 id = base.reg(username, password)
+                break
             else:
                 print(result_check_correct_password)
         elif param == "log":
@@ -44,5 +54,4 @@ if __name__ == "__main__":
             else:
                 break
     
-
-    print(f"Hello {base.get_data(id)['Username']}!")
+    write_info(base.get_data(id))

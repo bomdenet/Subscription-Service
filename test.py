@@ -3,13 +3,11 @@ from sub_serv import *
 from datetime import datetime
 
 
-def write_info(info):
-    if info.get("Is admin", False):
-        print(f"Hello admin {info['Username']}!")
-    else:
-        print(f"Hello {info['Username']}!")
-    print(f"Your balance: {info['Balance']}")
-    # При определении даты и ремени необходимо не забыть про часовые пояса, в бд использовать время utc
+def write_info(user):
+    print(f"Hello {user.username}")
+    print(f"Is admin: {user.is_admin}")
+    print(f"Balance: {user.balance}")
+    print(f"Subscription: {user.subscription}")
 
 
 if __name__ == "__main__":
@@ -42,16 +40,16 @@ if __name__ == "__main__":
         result_check_correct_password = base.check_correct_password(password)
         if param == "reg":
             if type(result_check_correct_password) is bool:
-                id = base.reg(username, password)
+                user = base.reg(username, password)
                 break
             else:
                 print(result_check_correct_password)
         elif param == "log":
             try:
-                id = base.auth(username, password)
+                user = base.auth(username, password)
             except IncorrectPassword as e:
                 print(e)
             else:
                 break
     
-    write_info(base.get_data(id))
+    write_info(user)

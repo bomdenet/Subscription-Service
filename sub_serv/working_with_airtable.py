@@ -111,7 +111,7 @@ class User:
     def balance(self):
         return self.data["Balance"]
     
-    #При определении даты и ремени необходимо не забыть про часовые пояса, в бд использовать время utc
+    #При определении даты и времени необходимо не забыть про часовые пояса, в бд использовать время utc
     @property
     def subscription(self):
         return self.data["Subscription"]

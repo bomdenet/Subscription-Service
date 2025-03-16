@@ -22,10 +22,7 @@ class BaseData:
         return find_data[0]
 
     def __create_user(self, user):
-        if (user["fields"].get("Is admin", False)):
-            return Admin(user["id"], self.__user_table)
-        else:
-            return User(user["id"], self.__user_table)
+        return User(user["id"], self.__user_table)
 
     def check_correct_username(self, username):
         if len(username) < self.min_len_username:
@@ -104,6 +101,11 @@ class User:
         return self.data["Username"]
 
     @property
+    def __update_is_admin(self):
+        self.update()
+        return self.is_admin
+
+    @property
     def is_admin(self):
         return self.data.get("Is admin", False)
     
@@ -116,6 +118,25 @@ class User:
     def subscription(self):
         return self.data["Subscription"]
 
+    def get_data_another_user(self, username):
+        if not self.__update_is_admin:
+            raise UserHasNoRights("The user has no rights")
+        
+        find_data = self.__user_table.all(formula=f"Username='{username}'")
+        if (len(find_data) == 0):
+            raise IncorrectUsername("The username is incorrect")
+        return find_data[0]["fields"]
 
-class Admin(User):
-    pass
+    def set_data_another_user(self, username, key, value):
+        if (not self.__update_is_admin):
+            raise UserHasNoRights("The user has no rights")
+        
+        self.__user_table.update
+        find_data = self.__user_table.all(formula=f"Username='{username}'")
+        if (len(find_data) == 0):
+            raise IncorrectUsername("The username is incorrect")
+        
+        if (key == "Is admin" and find_data[0]["fields"].get("Is admin", False)):
+            raise UserHasNoRights("The user has no rights")
+        
+        self.__user_table.update(find_data[0]["id"], { key: value })

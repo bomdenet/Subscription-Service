@@ -28,3 +28,7 @@ class IncorrectPassword(AirtableException):
 
 class UsernameIsBusy(AirtableException):
     pass
+
+
+class UserHasNoRights(AirtableException):
+    pass

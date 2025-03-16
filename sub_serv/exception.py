@@ -32,3 +32,15 @@ class UsernameIsBusy(AirtableException):
 
 class UserHasNoRights(AirtableException):
     pass
+
+
+class NameIsBusy(AirtableException):
+    pass
+
+
+class IncorrectName(AirtableException):
+    pass
+
+
+class IncorrectDiscount(AirtableException):
+    pass

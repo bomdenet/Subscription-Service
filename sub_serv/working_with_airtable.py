@@ -7,6 +7,7 @@ from datetime import datetime
 class BaseData:
     def __init__(self, token, appToken):
         self.__user_table = Api(token).table(appToken, "Users")
+        self.__subscribe_table = Api(token).table(appToken, "Subscribe")
         self.min_len_username = 4
         self.min_len_password = 8
         self.characters_in_username = "abcdefghijklmnopqrstuvwxyz0123456789"
@@ -22,7 +23,7 @@ class BaseData:
         return find_data[0]
 
     def __create_user(self, user):
-        return User(user["id"], self.__user_table)
+        return User(user["id"], self.__user_table, self.__subscribe_table)
 
     def check_correct_username(self, username):
         if len(username) < self.min_len_username:
@@ -77,11 +78,18 @@ class BaseData:
         if (user["fields"]["Password"] != hashed_password):
             raise IncorrectPassword("The password is incorrect")
         return self.__create_user(user)
+    
+    def subscribe_type(self):
+        find_data = self.__subscribe_table.all()
+        for i in range(len(find_data)):
+            find_data[i] = find_data[i]["fields"]
+        return find_data
 
 
 class User:
-    def __init__(self, id, user_table):
+    def __init__(self, id, user_table, subscribe_table):
         self.__user_table = user_table
+        self.__subscribe_table = subscribe_table
         self.__id = id
         self.auto_update = False
         self.update()
@@ -131,7 +139,7 @@ class User:
         if (not self.__update_is_admin):
             raise UserHasNoRights("The user has no rights")
         
-        self.__user_table.update
+        
         find_data = self.__user_table.all(formula=f"Username='{username}'")
         if (len(find_data) == 0):
             raise IncorrectUsername("The username is incorrect")
@@ -140,3 +148,60 @@ class User:
             raise UserHasNoRights("The user has no rights")
         
         self.__user_table.update(find_data[0]["id"], { key: value })
+
+    def create_subscription(self, name, length, price):
+        if (not self.__update_is_admin):
+            raise UserHasNoRights("The user has no rights")
+        
+        find_data = self.__subscribe_table.all(formula=f"Name='{name}'")
+        if (len(find_data) != 0):
+            raise NameIsBusy("The name is busy")
+        
+        user = self.__subscribe_table.create({
+            "Name": name,
+            "Length": length,
+            "Price": price,
+            "Discount": 0,
+            "End_discount": datetime.min.isoformat()
+        })
+
+    def update_subscription(self, name, length, price):
+        if (not self.__update_is_admin):
+            raise UserHasNoRights("The user has no rights")
+        
+        find_data = self.__subscribe_table.all(formula=f"Name='{name}'")
+        if (len(find_data) == 0):
+            raise IncorrectName("The username is incorrect")
+        
+        self.__user_table.update(find_data[0]["id"], {"Length": length, "Price": price})
+
+    def create_discount(self, name, discount, date):
+        if (not self.__update_is_admin):
+            raise UserHasNoRights("The user has no rights")
+        
+        find_data = self.__subscribe_table.all(formula=f"Name='{name}'")
+        if (len(find_data) == 0):
+            raise IncorrectName("The username is incorrect")
+        
+        if discount < 0 or discount > 1:
+            raise IncorrectDiscount("The discount is incorrect")
+         
+        user = self.__subscribe_table.update(find_data[0]["id"], {"Discount": discount, "End_discount": date.isoformat()})
+
+        
+
+        
+
+        
+        
+
+
+
+
+
+
+
+    
+
+
+

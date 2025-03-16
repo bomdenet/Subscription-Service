@@ -53,17 +53,5 @@ if __name__ == "__main__":
                 break
     
     write_info(user)
-    while True:
-        print("Input username: ", end="")
-        username = input()
-        try:
-            print(user.get_data_another_user(username))
-            print("Input key: ", end="")
-            key = input()
-            print("Input value: ", end="")
-            value = input()
-            user.set_data_another_user(username, key, value)
-        except IncorrectUsername as e:
-            print(e)
-        except UserHasNoRights as e:
-            print(e)
+
+    

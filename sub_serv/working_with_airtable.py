@@ -93,7 +93,7 @@ class User:
         self.__id = id
         self.auto_update = False
         self.update()
-    
+
     def update(self):
         self.__data = self.__user_table.get(self.__id)["fields"]
 
@@ -103,7 +103,7 @@ class User:
             self.update()
         
         return self.__data
-    
+
     @property
     def username(self):
         return self.data["Username"]
@@ -138,7 +138,6 @@ class User:
     def set_data_another_user(self, username, key, value):
         if (not self.__update_is_admin):
             raise UserHasNoRights("The user has no rights")
-        
         
         find_data = self.__user_table.all(formula=f"Username='{username}'")
         if (len(find_data) == 0):
@@ -187,21 +186,3 @@ class User:
             raise IncorrectDiscount("The discount is incorrect")
          
         user = self.__subscribe_table.update(find_data[0]["id"], {"Discount": discount, "End_discount": date.isoformat()})
-
-        
-
-        
-
-        
-        
-
-
-
-
-
-
-
-    
-
-
-

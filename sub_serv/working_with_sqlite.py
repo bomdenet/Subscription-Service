@@ -2,7 +2,7 @@ import sqlite3
 import hashlib
 import time
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from sub_serv.exception import *
 
 
@@ -19,6 +19,7 @@ class BaseData:
         self.create_payment_table()
         self.create_users_table()
         self.create_subscribe_table()
+        
 
 
     def create_users_table(self):
@@ -51,15 +52,14 @@ class BaseData:
 
     def create_subscribe_table(self):
         self.cursor.execute("""
-            CREATE TABLE IF NOT EXISTS payments (
+            CREATE TABLE IF NOT EXISTS subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT,
-                username TEXT UNIQUE NOT NULL,
                 name_subscr TEXT NOT NULL,
                 length TEXT NOT NULL,
                 price INTEGER NOT NULL,
-                discount REAL NOT NULL,
-                end_discound TEXT,
+                discount REAL,
+                end_discount TEXT,
+                user_id TEXT,
                 FOREIGN KEY (user_id) REFERENCES users(user_id)
             )
         """)
@@ -115,11 +115,12 @@ class BaseData:
             raise UsernameIsBusy("The username is busy")
         
         hashed_password = self.__encrypt(password)
+        user_id = self.generate_user_id()
 
         self.cursor.execute("""
-            INSERT INTO users (username, password_hash, is_admin, subscription)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        """, (username, hashed_password, 0, datetime.min.isoformat()))
+            INSERT INTO users (username, password, is_admin, subscription, payments, user_id)
+            VALUES (?, ?, ?, ?, NULL, ?)
+        """, (username, hashed_password, 0, datetime.min.isoformat()), user_id)
         self.conn.commit()
 
         return user
@@ -133,6 +134,79 @@ class BaseData:
             raise IncorrectPassword("The password is incorrect")
         return user   
     
+        
+
+    def add_payment(self, username, amount):
+        self.cursor.execute("SELECT user_id FROM users WHERE username = ?", (username,))
+        result = self.__find_user(username)
+        if result is None:
+            raise IncorrectUsername("The username is incorrect") 
+
+        user_id = result[0]
+        date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        status = 1
+
+        self.cursor.execute("""
+            INSERT INTO payments (amount, date, user_id, status)
+            VALUES (?, ?, ?, ?)
+        """, (amount, date, user_id, status))
+
+        payment_id = self.cursor.lastrowid
+
+        self.cursor.execute("""
+            UPDATE users SET payments = ? WHERE user_id = ?
+        """, (payment_id, user_id))
+
+        self.conn.commit()
+
+    def add_subscribe(self, name, length, price):
+        self.cursor.execute("""
+            INSERT INTO subscriptions (name_subscr, length, price, discount, end_discount, user_id)
+            VALUES (?, ?, ?, NULL, NULL, NULL)
+        """, (name, length, price))
+        self.conn.commit()
+
+    def assign_subscribe_to_users(self, subscription_name):
+        self.cursor.execute("""
+            SELECT length FROM subscriptions WHERE name_subscr = ?
+        """, (subscription_name,))
+        result = self.cursor.fetchone()
+
+        if not result:
+            raise IncorrectSubscription("Subscription not found")
+
+        duration_days = result[0]
+
+        self.cursor.execute("""
+            SELECT user_id, payments FROM users WHERE subscription IS NULL
+        """)
+        users = self.cursor.fetchall()
+
+        for user_id, payment_id in users:
+            if payment_id is None:
+                continue
+
+            # Получаем дату платежа
+            self.cursor.execute("""
+                SELECT date FROM payments WHERE id = ?
+            """, (payment_id,))
+            payment_result = self.cursor.fetchone()
+            if not payment_result:
+                   continue
+
+            payment_date = datetime.strptime(payment_result[0], "%Y-%m-%d %H:%M:%S")
+            end_date = payment_date + timedelta(days=duration_days * 30)
+
+            # Обновляем пользователя
+            self.cursor.execute("""
+                UPDATE users
+                SET subscription = ? WHERE user_id = ?
+            """, (end_date.strftime("%Y-%m-%d %H:%M:%S"),  user_id))
+
+        self.conn.commit()
+
+
+        
 
 
 

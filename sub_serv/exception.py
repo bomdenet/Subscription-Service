@@ -44,3 +44,6 @@ class IncorrectName(AirtableException):
 
 class IncorrectDiscount(AirtableException):
     pass
+
+class IncorrectSubscription(AirtableException):
+    pass

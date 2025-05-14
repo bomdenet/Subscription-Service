@@ -5,10 +5,9 @@ import uuid
 from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
 from .exception import *
- 
+
 
 class BaseData:
- 
     def __init__(self, db_name="example.db"):
         self.db_name = db_name
         self.conn = sqlite3.connect(self.db_name)
@@ -34,10 +33,8 @@ class BaseData:
                 payments INTEGER,
                 FOREIGN KEY (payments) REFERENCES payments(id)
             )
- 
         """)
         self.conn.commit()
- 
 
     def __create_payment_table(self):
         self.cursor.execute("""
@@ -51,7 +48,6 @@ class BaseData:
             )
         """)
         self.conn.commit()
- 
 
     def __create_subscribe_table(self):
         self.cursor.execute("""
@@ -61,20 +57,18 @@ class BaseData:
                 length TEXT NOT NULL,
                 price INTEGER NOT NULL,
                 discount REAL,
-                end_discount TEXT
+                end_discount TEXT,
             )
- 
         """)
         self.conn.commit()
 
- 
     def __encrypt(self, text):
         return hashlib.sha256(text.encode()).hexdigest()
  
     def __generate_user_id(self):
         raw = f"{time.time()}{uuid.uuid4()}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
- 
+
     def __find_user(self, username):
         self.cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
         row = self.cursor.fetchone()
@@ -82,12 +76,12 @@ class BaseData:
             return dict(row)
         else:
             return None
- 
+
     def user_exists(self, username):
         if self.__find_user(username) is None:
             return False
         return True
-    
+
     def check_correct_username(self, username):
         if len(username) < self.min_len_username:
             return ShortUsername(f"The username is too short. Minimum length is {self.min_len_username} characters")
@@ -103,7 +97,7 @@ class BaseData:
             if i.lower() in self.incorrect_characters_in_password:
                 return IncorrectCharectersInPassword("The password contains incorrect characters")
         return True
- 
+
     def reg(self, username, password):
         result_check_correct_username = self.check_correct_username(username)
         if type(result_check_correct_username) is not bool:
@@ -138,7 +132,7 @@ class BaseData:
         if user["password"] != hashed_password:
             raise IncorrectPassword("The password is incorrect")
         return user  
-    
+
     def add_payment(self, username, amount):
         result = self.__find_user(username)
         if result is None:
@@ -160,7 +154,6 @@ class BaseData:
         """, (payment_id, user_id))
         self.conn.commit()
 
- 
     def add_subscribe(self, name, length, price):
         self.cursor.execute("""
             INSERT INTO subscriptions (name_subscr, length, price, discount, end_discount)
@@ -193,7 +186,6 @@ class BaseData:
 
 
     def set_discount_for_subscription(self, subscription_name, discount_value: float, discount_days: int):
-
         self.cursor.execute("""
             SELECT id FROM subscriptions WHERE name_subscr = ?
         """, (subscription_name,))
@@ -203,7 +195,6 @@ class BaseData:
 
         end_discount_date = (datetime.now() + timedelta(days=discount_days)).strftime("%Y-%m-%d %H:%M:%S")
 
-        
         self.cursor.execute("""
             UPDATE subscriptions
             SET discount = ?, end_discount = ?

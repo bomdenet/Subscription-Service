@@ -6,7 +6,6 @@ from dateutil.relativedelta import relativedelta
 from datetime import datetime, timedelta
 
 
-
 class BaseData:
     def __init__(self, db_name="example.db"):
         self.db_name = db_name
@@ -101,16 +100,16 @@ class BaseData:
     def reg(self, username, password):
         result_check_correct_username = self.check_correct_username(username)
         if type(result_check_correct_username) is not bool:
-            raise result_check_correct_username
+            return result_check_correct_username
  
         result_check_correct_password = self.check_correct_password(password)
         if type(result_check_correct_password) is not bool:
-            raise result_check_correct_password
+            return result_check_correct_password
         
         user = self.__find_user(username)
  
         if user is not None:
-            raise Exception("The username is busy")
+            return Exception("The username is busy")
  
 
         hashed_password = self.__encrypt(password)
@@ -128,15 +127,15 @@ class BaseData:
         hashed_password = self.__encrypt(password)
         user = self.__find_user(username)
         if user is None:
-            raise Exception("The username is incorrect")
+            return Exception("The username is incorrect")
         if user["password"] != hashed_password:
-            raise Exception("The password is incorrect")
+            return Exception("The password is incorrect")
         return user  
 
     def add_payment(self, username, amount):
         result = self.__find_user(username)
         if result is None:
-            raise Exception("The username is incorrect")
+            return Exception("The username is incorrect")
 
         user_id = result["user_id"]
         date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -169,7 +168,7 @@ class BaseData:
             cursor.execute("SELECT length FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
             result = cursor.fetchone()
             if not result:
-                raise Exception("Подписка с таким названием не найдена")
+                return Exception("Подписка с таким названием не найдена")
 
             length_months = int(result["length"])
             end_date = datetime.now() + relativedelta(months=length_months)
@@ -184,14 +183,13 @@ class BaseData:
         except Exception as e:
             print(f"Ошибка при назначении подписки: {e}")
 
-
     def set_discount_for_subscription(self, subscription_name, discount_value: float, discount_days: int):
         self.cursor.execute("""
             SELECT id FROM subscriptions WHERE name_subscr = ?
         """, (subscription_name,))
         result = self.cursor.fetchone()
         if not result:
-            raise Exception("Subscription not found")
+            return Exception("Subscription not found")
 
         end_discount_date = (datetime.now() + timedelta(days=discount_days)).strftime("%Y-%m-%d %H:%M:%S")
 

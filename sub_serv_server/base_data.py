@@ -1,5 +1,4 @@
 import sqlite3
-import hashlib
 import time
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -26,10 +25,11 @@ class BaseData:
                 user_id TEXT UNIQUE,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
-                is_admin INTEGER NOT NULL CHECK (is_admin IN (0, 1, 2)),
+                is_admin INTEGER NOT NULL CHECK (is_admin IN (0, 1)),
                 subscription INTEGER,
                 payments INTEGER,
-                FOREIGN KEY (payments) REFERENCES payments(id)
+                yoomoney_token TEXT,
+                subscription_name TEXT
             )
         """)
         self.conn.commit()
@@ -51,26 +51,21 @@ class BaseData:
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name_subscr TEXT NOT NULL,
+                name_subscr TEXT UNIQUE NOT NULL,
                 length INTEGER NOT NULL,
-                price INTEGER NOT NULL,
-                discount REAL,
-                end_discount INTEGER
+                price INTEGER NOT NULL
             )
         """)
         self.conn.commit()
 
-    def __encrypt(self, text):
-        return hashlib.sha256(text.encode()).hexdigest()
-
     def __generate_user_id(self):
         raw = f"{time.time()}{uuid.uuid4()}"
-        return hashlib.sha256(raw.encode()).hexdigest()[:16]
+        return raw[:16]
 
     def __find_user(self, username):
-        self.cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        self.cursor.execute("SELECT user_id FROM users WHERE username = ?", (username,))
         row = self.cursor.fetchone()
-        return dict(row) if row else None
+        return row["user_id"] if row else None
 
     def user_exists(self, username):
         return self.__find_user(username) is not None
@@ -80,7 +75,7 @@ class BaseData:
             return Exception(f"The username is too short. Minimum length is {self.min_len_username} characters")
         for i in username:
             if i.lower() not in self.characters_in_username:
-                return Exception("The username contains incorrect characters. You can use only letters of the Latin alphabet and numbers.")
+                return Exception("The username contains incorrect characters.")
         return True
 
     def check_correct_password(self, password):
@@ -96,86 +91,112 @@ class BaseData:
             return result
         if (result := self.check_correct_password(password)) is not True:
             return result
-        if self.__find_user(username) is not None:
+        if self.__find_user(username):
             return Exception("The username is busy")
 
-        hashed_password = self.__encrypt(password)
         user_id = self.__generate_user_id()
         self.cursor.execute("""
-            INSERT INTO users (username, password, is_admin, subscription, payments, user_id)
-            VALUES (?, ?, ?, ?, NULL, ?)
-        """, (username, hashed_password, 0, 0, user_id))
+            INSERT INTO users (username, password, is_admin, subscription, payments, user_id, yoomoney_token)
+            VALUES (?, ?, 0, 0, NULL, ?, NULL)
+        """, (username, password, user_id))
         self.conn.commit()
-        return self.__find_user(username)
+        return self.get_user_info(user_id)
 
     def auth(self, username, password):
-        hashed_password = self.__encrypt(password)
-        user = self.__find_user(username)
+        self.cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
+        user = self.cursor.fetchone()
         if user is None:
             return Exception("The username is incorrect")
-        if user["password"] != hashed_password:
+        if user["password"] != password:
             return Exception("The password is incorrect")
-        return user
+        return dict(user)
 
-    def add_payment(self, username, amount):
-        user = self.__find_user(username)
+    def add_payment(self, user_id, amount):
+        if amount <= 0:
+            return Exception("Amount must be positive")
+
+        self.cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        user = self.cursor.fetchone()
         if user is None:
-            return Exception("The username is incorrect")
+            return Exception("User not found")
 
-        user_id = user["user_id"]
         timestamp = int(datetime.utcnow().timestamp())
-        status = 1
-
         self.cursor.execute("""
             INSERT INTO payments (amount, date, user_id, status)
-            VALUES (?, ?, ?, ?)
-        """, (amount, timestamp, user_id, status))
+            VALUES (?, ?, ?, 1)
+        """, (amount, timestamp, user_id))
 
         payment_id = self.cursor.lastrowid
-        self.cursor.execute("""
-            UPDATE users SET payments = ? WHERE user_id = ?
-        """, (payment_id, user_id))
+        self.cursor.execute("UPDATE users SET payments = ? WHERE user_id = ?", (payment_id, user_id))
         self.conn.commit()
 
-    def add_subscribe(self, name, length, price):
+    def add_subscribe(self, user_id, name, length, price):
+        if length <= 0 or price < 0:
+            return Exception("Invalid length or price")
+        user = self.get_user_info(user_id)
+        if not user or user["is_admin"] < 1:
+            return Exception("Access denied")
+
+        self.cursor.execute("SELECT * FROM subscriptions WHERE name_subscr = ?", (name,))
+        if self.cursor.fetchone():
+            return Exception("Subscription with this name already exists")
+
         self.cursor.execute("""
-            INSERT INTO subscriptions (name_subscr, length, price, discount, end_discount)
-            VALUES (?, ?, ?, NULL, NULL)
+            INSERT INTO subscriptions (name_subscr, length, price)
+            VALUES (?, ?, ?)
         """, (name, length, price))
         self.conn.commit()
 
     def assign_subscription_to_user(self, user_id, subscription_name):
+        user = self.get_user_info(user_id)
+        if not user:
+            return Exception("User not found")
+
         self.cursor.execute("SELECT length FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
-        result = self.cursor.fetchone()
-        if not result:
-            return Exception("Подписка с таким названием не найдена")
-
-        length_months = int(result["length"])
-        end_date = datetime.now(timezone.utc) + timedelta(days=30 * length_months)
-        timestamp = int(end_date.timestamp())
-
-        self.cursor.execute(
-            "UPDATE users SET subscription = ? WHERE user_id = ?",
-            (timestamp, user_id)
-        )
-        self.conn.commit()
-
-    def set_discount_for_subscription(self, subscription_name, discount_value: float, discount_days: int):
-        self.cursor.execute("""
-            SELECT id FROM subscriptions WHERE name_subscr = ?
-        """, (subscription_name,))
-        result = self.cursor.fetchone()
-        if not result:
+        row = self.cursor.fetchone()
+        if not row:
             return Exception("Subscription not found")
 
-        end_discount_date = int((datetime.utcnow() + timedelta(days=discount_days)).timestamp())
+        length = row["length"]
+        expires_at = int((datetime.utcnow() + timedelta(days=length)).timestamp())
+
+        self.cursor.execute("""
+            UPDATE users 
+            SET subscription = ?, subscription_name = ?
+            WHERE user_id = ?
+        """, (expires_at, subscription_name, user_id))
+        self.conn.commit()
+
+
+    def edit_subscribe(self, user_id, name, new_length, new_price):
+        if new_length <= 0 or new_price < 0:
+            return Exception("Invalid data")
+        user = self.get_user_info(user_id)
+        if not user or user["is_admin"] < 1:
+            return Exception("Access denied")
+
+        self.cursor.execute("SELECT * FROM subscriptions WHERE name_subscr = ?", (name,))
+        if not self.cursor.fetchone():
+            return Exception("Subscription not found")
 
         self.cursor.execute("""
             UPDATE subscriptions
-            SET discount = ?, end_discount = ?
+            SET length = ?, price = ?
             WHERE name_subscr = ?
-        """, (discount_value, end_discount_date, subscription_name))
+        """, (new_length, new_price, name))
+        self.conn.commit()
 
+    def delete_subscribe(self, user_id, name):
+        user = self.get_user_info(user_id)
+        if not user or user["is_admin"] < 1:
+            return Exception("Access denied")
+
+        self.cursor.execute("DELETE FROM subscriptions WHERE name_subscr = ?", (name,))
+        self.cursor.execute("""
+            UPDATE users 
+            SET subscription = 0, subscription_name = NULL 
+            WHERE subscription_name = ?
+        """, (name,))
         self.conn.commit()
 
     def get_users_with_expiring_subscriptions(self, within_days: int = 3):
@@ -186,6 +207,15 @@ class BaseData:
             WHERE subscription IS NOT NULL AND subscription > 0 AND subscription <= ?
         """, (future_ts,))
         return [dict(row) for row in self.cursor.fetchall()]
+
+    def get_user_info(self, user_id):
+        self.cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        row = self.cursor.fetchone()
+        return dict(row) if row else None
+
+    def edit_yoomoney_token(self, user_id, new_token):
+        self.cursor.execute("UPDATE users SET yoomoney_token = ? WHERE user_id = ?", (new_token, user_id))
+        self.conn.commit()
 
     def print_debug_info(self):
         print("=== USERS TABLE ===")

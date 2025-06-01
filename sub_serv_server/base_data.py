@@ -1,7 +1,8 @@
 import sqlite3
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+import hashlib
 
 
 class BaseData:
@@ -22,14 +23,13 @@ class BaseData:
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT UNIQUE,
+                user_id INTEGER UNIQUE,
                 username TEXT UNIQUE NOT NULL,
                 password TEXT NOT NULL,
                 is_admin INTEGER NOT NULL CHECK (is_admin IN (0, 1)),
                 subscription INTEGER,
-                payments INTEGER,
-                yoomoney_token TEXT,
-                subscription_name TEXT
+                subscription_name TEXT,
+                balance INTEGER DEFAULT 0
             )
         """)
         self.conn.commit()
@@ -60,11 +60,12 @@ class BaseData:
 
     def __generate_user_id(self):
         raw = f"{time.time()}{uuid.uuid4()}"
-        return raw[:16]
+        return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
     def __find_user(self, username):
         self.cursor.execute("SELECT user_id FROM users WHERE username = ?", (username,))
         row = self.cursor.fetchone()
+        print(row)
         return row["user_id"] if row else None
 
     def user_exists(self, username):
@@ -95,12 +96,18 @@ class BaseData:
             return Exception("The username is busy")
 
         user_id = self.__generate_user_id()
+
+        # Проверяем, первый ли это пользователь
+        self.cursor.execute("SELECT COUNT(*) FROM users")
+        count = self.cursor.fetchone()[0]
+        is_admin = 1 if count == 0 else 0
+
         self.cursor.execute("""
-            INSERT INTO users (username, password, is_admin, subscription, payments, user_id, yoomoney_token)
-            VALUES (?, ?, 0, 0, NULL, ?, NULL)
-        """, (username, password, user_id))
+            INSERT INTO users (username, password, is_admin, subscription, user_id, balance)
+            VALUES (?, ?, ?, 0, ?, 0)
+        """, (username, password, is_admin, user_id))
         self.conn.commit()
-        return self.get_user_info(user_id)
+        return user_id
 
     def auth(self, username, password):
         self.cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
@@ -109,7 +116,7 @@ class BaseData:
             return Exception("The username is incorrect")
         if user["password"] != password:
             return Exception("The password is incorrect")
-        return dict(user)
+        return user["user_id"]
 
     def add_payment(self, user_id, amount):
         if amount <= 0:
@@ -126,14 +133,18 @@ class BaseData:
             VALUES (?, ?, ?, 1)
         """, (amount, timestamp, user_id))
 
-        payment_id = self.cursor.lastrowid
-        self.cursor.execute("UPDATE users SET payments = ? WHERE user_id = ?", (payment_id, user_id))
+        # Увеличить баланс пользователя
+        self.cursor.execute("""
+            UPDATE users SET balance = balance + ? WHERE user_id = ?
+        """, (amount, user_id))
+
         self.conn.commit()
+        return True
 
     def add_subscribe(self, user_id, name, length, price):
         if length <= 0 or price < 0:
             return Exception("Invalid length or price")
-        user = self.get_user_info(user_id)
+        user = self.__get_user_info_full(user_id)
         if not user or user["is_admin"] < 1:
             return Exception("Access denied")
 
@@ -148,32 +159,39 @@ class BaseData:
         self.conn.commit()
 
     def assign_subscription_to_user(self, user_id, subscription_name):
-        user = self.get_user_info(user_id)
+        user = self.__get_user_info_full(user_id)
         if not user:
             return Exception("User not found")
 
-        self.cursor.execute("SELECT length FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
+        self.cursor.execute("SELECT length, price FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
         row = self.cursor.fetchone()
         if not row:
             return Exception("Subscription not found")
 
         length = row["length"]
+        price = row["price"]
+
+        if user["balance"] < price:
+            return Exception("Not enough balance to purchase this subscription")
+
         expires_at = int((datetime.utcnow() + timedelta(days=length)).timestamp())
 
         self.cursor.execute("""
             UPDATE users 
-            SET subscription = ?, subscription_name = ?
+            SET 
+                subscription = ?, 
+                subscription_name = ?, 
+                balance = balance - ?
             WHERE user_id = ?
-        """, (expires_at, subscription_name, user_id))
+        """, (expires_at, subscription_name, price, user_id))
         self.conn.commit()
 
-    
-
+        return True
 
     def edit_subscribe(self, user_id, name, new_length, new_price):
         if new_length <= 0 or new_price < 0:
             return Exception("Invalid data")
-        user = self.get_user_info(user_id)
+        user = self.__get_user_info_full(user_id)
         if not user or user["is_admin"] < 1:
             return Exception("Access denied")
 
@@ -189,7 +207,7 @@ class BaseData:
         self.conn.commit()
 
     def delete_subscribe(self, user_id, name):
-        user = self.get_user_info(user_id)
+        user = self.__get_user_info_full(user_id)
         if not user or user["is_admin"] < 1:
             return Exception("Access denied")
 
@@ -200,7 +218,7 @@ class BaseData:
             WHERE subscription_name = ?
         """, (name,))
         self.conn.commit()
-
+    # мб стереть нахуй
     def get_users_with_expiring_subscriptions(self, within_days: int = 3):
         now_ts = int(datetime.utcnow().timestamp())
         future_ts = now_ts + within_days * 86400
@@ -209,15 +227,28 @@ class BaseData:
             WHERE subscription IS NOT NULL AND subscription > 0 AND subscription <= ?
         """, (future_ts,))
         return [dict(row) for row in self.cursor.fetchall()]
+    
+    def get_available_subscriptions(self):
+        self.cursor.execute("SELECT name_subscr, price, length FROM subscriptions")
+        return [dict(row) for row in self.cursor.fetchall()]
 
-    def get_user_info(self, user_id):
+    def __get_user_info_full(self, user_id):
         self.cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         row = self.cursor.fetchone()
         return dict(row) if row else None
 
-    def edit_yoomoney_token(self, user_id, new_token):
-        self.cursor.execute("UPDATE users SET yoomoney_token = ? WHERE user_id = ?", (new_token, user_id))
-        self.conn.commit()
+    def get_user_info(self, user_id):
+        user = self.__get_user_info_full(user_id)
+        if not user:
+            return None
+
+        # Удаляем ненужные поля
+        for key in ['password', 'id', 'user_id']:
+            if key in user:
+                del user[key]
+
+        return user
+
 
     def print_debug_info(self):
         print("=== USERS TABLE ===")
@@ -234,3 +265,30 @@ class BaseData:
         self.cursor.execute("SELECT * FROM subscriptions")
         for row in self.cursor.fetchall():
             print(dict(row))
+
+    # ✅ Новая функция: получить историю платежей пользователя
+    def get_user_payments_history(self, user_id):
+        self.cursor.execute("SELECT * FROM payments WHERE user_id = ?", (user_id,))
+        return [dict(row) for row in self.cursor.fetchall()]
+
+    # ✅ Назначение админа
+    def set_admin_status(self, admin_id, target_username, is_admin):
+
+        # Проверяем права у текущего пользователя
+        admin_info = self.__get_user_info_full(admin_id)
+        if not admin_info or admin_info["is_admin"] < 1:
+            return Exception("You don't have permission to change admin status")
+
+        # Находим целевого пользователя по username
+        self.cursor.execute("SELECT user_id FROM users WHERE username = ?", (target_username,))
+        result = self.cursor.fetchone()
+        if not result:
+            return Exception(f"User with username '{target_username}' not found")
+
+        target_user_id = result["user_id"]
+
+        # Обновляем статус
+        self.cursor.execute("UPDATE users SET is_admin = ? WHERE user_id = ?", (is_admin, target_user_id))
+        self.conn.commit()
+
+        return True

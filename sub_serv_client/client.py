@@ -92,7 +92,7 @@ class SubServClient:
         else:
             return response
     
-    def reg(self, username: str, password: str) -> SubServUser | None:
+    def reg(self, username: str, password: str) -> SubServUser | str | None:
         if not self.__check_correct_data(username) or not self.__check_correct_data(password):
             return None
         
@@ -104,9 +104,9 @@ class SubServClient:
             if self.__check_for_id(response):
                 return SubServUser(self.__socket, response.split("|")[1])
             else:
-                return None
+                return response
     
-    def auth(self, username: str, password: str) -> SubServUser | None:
+    def auth(self, username: str, password: str) -> SubServUser | str | None:
         if not self.__check_correct_data(username) or not self.__check_correct_data(password):
             return None
         
@@ -118,7 +118,7 @@ class SubServClient:
             if self.__check_for_id(response):
                 return SubServUser(self.__socket, response.split("|")[1])
             else:
-                return None
+                return response
 
 
     def is_connected(self) -> bool:

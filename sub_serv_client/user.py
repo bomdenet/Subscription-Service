@@ -29,6 +29,20 @@ class SubServUser:
                 self.__connected = False
                 return None
 
+    def __get_big_message(self) -> list | None:
+        response = []
+        data = self.__get_message().split("&")
+        for item in data:
+            if item != "":
+                response.append(item)
+        while response[-1] != "end" and type(response[-1]) is str:
+            data = self.__get_message().split("&")
+            for item in data:
+                if item != "":
+                    response.append(item)
+        
+        return response[:-1:]
+
     def __check_correct_data(self, data: str) -> bool:
         if "|" in data or "&" in data:
             return False
@@ -38,11 +52,23 @@ class SubServUser:
     def get_user_info(self) -> dict | None:
         self.__send_message(f"get_user_info|{self.__id}")
         response = self.__get_message()
-        if response is str:
+        if type(response) is str:
             return ast.literal_eval(response)
         else:
             return None
     
+
+    # Получить информацию о типах подписок
+    def get_available_subscriptions(self) -> list | None:
+        self.__send_message(f"get_available_subscriptions")
+        response = self.__get_big_message()
+        
+        if type(response) is list:
+            response = [ast.literal_eval(item) for item in response]
+            return response
+        else:
+            return None
+
     # Работа с подписками(только для админа)
     def add_subscribe(self, name: str, length: int, price: int) -> bool | str | None:
         if not self.__check_correct_data(name):
@@ -52,7 +78,7 @@ class SubServUser:
         response = self.__get_message()
         if response.lower() == "true":
             return True
-        elif response is str:
+        elif type(response) is str:
             return response
         else:
             return None
@@ -65,7 +91,7 @@ class SubServUser:
         response = self.__get_message()
         if response.lower() == "true":
             return True
-        elif response is str:
+        elif type(response) is str:
             return response
         else:
             return None
@@ -78,7 +104,7 @@ class SubServUser:
         response = self.__get_message()
         if response.lower() == "true":
             return True
-        elif response is str:
+        elif type(response) is str:
             return response
         else:
             return None

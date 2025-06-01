@@ -35,30 +35,40 @@ def return_answer(message: str) -> str | None:
         data_cmd = data_cmd.split("&")
         if (len(data_cmd) < 2):
             return "Incorrect data"
-        return f"id|{base_data.reg(data_cmd[0], data_cmd[1])}"
+        result = base_data.reg(data_cmd[0], data_cmd[1])
+        if type(result) is str:
+            return f"id|{result}"
+        else:
+            return result
     elif type_cmd == "auth":
         data_cmd = data_cmd.split("&")
         if (len(data_cmd) < 2):
             return "Incorrect data"
-        return f"id|{base_data.auth(data_cmd[0], data_cmd[1])}"
+        result = base_data.auth(data_cmd[0], data_cmd[1])
+        if type(result) is str:
+            return f"id|{result}"
+        else:
+            return result
     elif type_cmd == "get_user_info":
         return str(base_data.get_user_info(data_cmd))
     elif type_cmd == "add_subscribe":
         data_cmd = data_cmd.split("&")
         if (len(data_cmd) < 4):
             return "Incorrect data"
-        return str(base_data.add_subscribe(data_cmd[0], data_cmd[1], int(data_cmd[2]), int(data_cmd[3])))
+        result = base_data.add_subscribe(data_cmd[0], data_cmd[1], int(data_cmd[2]), int(data_cmd[3]))
+        return "true" if result is None else str(result)
     elif type_cmd == "edit_subscribe":
         data_cmd = data_cmd.split("&")
         if (len(data_cmd) < 4):
             return "Incorrect data"
-        return str(base_data.edit_subscribe(data_cmd[0], data_cmd[1], int(data_cmd[2]), int(data_cmd[3])))
+        result = base_data.edit_subscribe(data_cmd[0], data_cmd[1], int(data_cmd[2]), int(data_cmd[3]))
+        return "true" if result is None else str(result)
     elif type_cmd == "delete_subscribe":
         data_cmd = data_cmd.split("&")
         if (len(data_cmd) < 2):
             return "Incorrect data"
-        ans = str(base_data.delete_subscribe(data_cmd[0], data_cmd[1]))
-        return "True" if ans is None else ans
+        ans = base_data.delete_subscribe(data_cmd[0], data_cmd[1])
+        return "true" if ans is None else str(ans)
     else:
         return None
 
@@ -72,11 +82,17 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             if not data:
                 break
             
-            print_debug_info()
             message = data.decode()
             write_log(f"Received from {addr}: {message}")
 
-            writer.write(str(return_answer(message)).encode())
+            if message == "get_available_subscriptions":
+                data = base_data.get_available_subscriptions()
+                for i in data:
+                    writer.write((str(i) + "&").encode())
+                writer.write("end".encode())
+            else:
+                writer.write(str(return_answer(message)).encode())
+                
             await writer.drain()
     except Exception:
         pass

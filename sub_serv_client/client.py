@@ -1,26 +1,134 @@
 import socket
+import hashlib
+from .user import SubServUser
 
 
-class Client:
-    def __init__(self, ip, port):
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
-            print(f"Подключение к серверу {ip}:{port}...")
-            client_socket.connect((ip, port))
+class SubServClient:
+    def __init__(self, host: str, port: int):
+        self.host = host
+        self.port = port
+        self.__socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            self.__socket.connect((self.host, self.port))
+            self.__connected = True
+        except Exception:
+            self.__connected = False
 
-            while True:
-                print("Введите сообщение для отправки на сервер (или 'exit' для выхода): ", end="")
-                message = input()
-                if message.lower() == 'exit':
-                    print("Выход из программы.")
-                    break
-                client_socket.sendall(message.encode())
-                print("Сообщение отправлено.")
+    def __send_message(self, message: str) -> bool:
+        if self.__connected:
+            try:
+                self.__socket.sendall(message.encode())
+                return True
+            except Exception:
+                self.__connected = False
+                return False
 
-            #data = client_socket.recv(1024)
-            #print(f"Ответ от сервера: {data.decode()}")
-            print("Закрытие соединения с сервером.")
+    def __encrypt(self, text: str):
+        return hashlib.sha256(text.encode()).hexdigest()
 
-        print("Программа завершина.")
+    def __get_message(self) -> str | None:
+        if self.__connected:
+            try:
+                data = self.__socket.recv(1024)
+                if not data:
+                    self.__connected = False
+                    return None
+                return data.decode()
+            except Exception:
+                self.__connected = False
+                return None
 
-    def send_message(self):
-        pass
+    def __check_correct_data(self, data: str) -> bool:
+        if "|" in data or "&" in data:
+            return False
+        return True
+
+    def __check_for_id(self, data: str) -> bool | None:
+        if (len(data.split("|")) < 2):
+            return None
+        
+        if data.split("|")[0] == "id":
+            return True
+        else:
+            return False
+
+
+    def user_exists(self, username: str) -> bool | None:
+        if not self.__check_correct_data(username):
+            return None
+        
+        self.__send_message(f"user_exists|{username}")
+        response = self.__get_message()
+        if response.lower() == "true":
+            return True
+        elif response.lower() == "false":
+            return False
+        else:
+            return None
+
+    def check_correct_username(self, username: str) -> str | bool | None:
+        if not self.__check_correct_data(username):
+            return None
+        
+        self.__send_message(f"check_correct_username|{username}")
+        response = self.__get_message()
+        if response is None:
+            return None
+        elif response.lower() == "true":
+            return True
+        else:
+            return response
+    
+    def check_correct_password(self, password: str) -> str | bool | None:
+        if not self.__check_correct_data(password):
+            return None
+        
+        self.__send_message(f"check_correct_password|{password}")
+        response = self.__get_message()
+        if response is None:
+            return None
+        elif response.lower() == "true":
+            return True
+        else:
+            return response
+    
+    def reg(self, username: str, password: str) -> SubServUser | None:
+        if not self.__check_correct_data(username) or not self.__check_correct_data(password):
+            return None
+        
+        self.__send_message(f"reg|{username}&{self.__encrypt(password)}")
+        response = self.__get_message()
+        if response is None:
+            return None
+        else:
+            if self.__check_for_id(response):
+                return SubServUser(self.__socket, response.split("|")[1])
+            else:
+                return None
+    
+    def auth(self, username: str, password: str) -> SubServUser | None:
+        if not self.__check_correct_data(username) or not self.__check_correct_data(password):
+            return None
+        
+        self.__send_message(f"auth|{username}&{self.__encrypt(password)}")
+        response = self.__get_message()
+        if response is None:
+            return None
+        else:
+            if self.__check_for_id(response):
+                return SubServUser(self.__socket, response.split("|")[1])
+            else:
+                return None
+
+
+    def is_connected(self) -> bool:
+        return self.__connected
+
+    def disconnect(self):
+        if self.__connected:
+            self.__connected = False
+            try:
+                self.__socket.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            self.__socket.close()

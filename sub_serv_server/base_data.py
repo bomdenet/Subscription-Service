@@ -167,6 +167,8 @@ class BaseData:
         """, (expires_at, subscription_name, user_id))
         self.conn.commit()
 
+    
+
 
     def edit_subscribe(self, user_id, name, new_length, new_price):
         if new_length <= 0 or new_price < 0:

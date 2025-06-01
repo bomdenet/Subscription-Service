@@ -1,15 +1,19 @@
 from sub_serv_client import SubServClient, SubServUser
+from datetime import datetime, timezone
 
 
-def write_info(user_data, subscriptions):
+def int_to_local_date(timesnap: int):
+    if timesnap <= 0:
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    return datetime.fromtimestamp(timesnap).astimezone()
+
+def write_info(user_data):
     print(f"Hello {user_data['username']}")
     print(f"Is admin: {user_data['is_admin']}")
     print(f"Balance: {user_data['balance']}")
-    print(f"Subscription: {user_data['subscription']}")
-
-    print("\nAll types of subscriptions:")
-    for sub in subscriptions:
-        print(f"Name: {sub['name_subscr']}, Duration: {sub['length']} days, Price: {sub['price']} rubles")
+    print(f"Subscription type: {user_data['subscription_name']}")
+    if int_to_local_date(user_data['subscription']) > datetime.now(timezone.utc):
+        print(f"Subscription: {int_to_local_date(user_data['subscription'])}")
 
 
 if __name__ == "__main__":
@@ -56,39 +60,109 @@ if __name__ == "__main__":
             else:
                 print(user)
 
-    write_info(user.get_user_info(), user.get_available_subscriptions())
+    while True:
+        print("\n\n\nMenu:")
+        print("0. Exit")
+        print("1. Print user info")
+        print("2. Print history of payments")
+        print("3. Add payment")
+        print("4. Buy subscription")
+        print("5. Print subscription")
+        if user.get_user_info()['is_admin'] == 1:
+            print("6. Admin menu")
+        print("Please, select an action (0/1/2/3/4/5): ", end="")
+        selection = input()
 
-    if user.get_user_info()['is_admin'] == 1:
-        while True:
-            print("\nYou can manage subscriptions:")
-            print("1. Add subscription")
-            print("2. Edit subscription")
-            print("3. Delete subscription")
-            print("4. Print subscription")
-            print("Please, select an action (1/2/3/4): ", end="")
-            selection = input()
-            if selection == "1" or selection == "2" or selection == "3":
-                print("Please, input name of subscription: ", end="")
-                name = input()
-                if selection == "1" or selection == "2":
+        if selection == "0":
+            break
+        elif selection == "1":
+            write_info(user.get_user_info())
+        elif selection == "2":
+            history = user.get_user_payments_history()
+            if history:
+                print("History of payments:")
+                for payment in history:
+                    print(f"Date: {int_to_local_date(payment['date'])}, Amount: {payment['amount']} rubles")
+            else:
+                print("No payment history available.")
+        elif selection == "3":
+            print("Please, input amount of payment (in rubles): ", end="")
+            amount = int(input())
+            result = user.add_payment(amount)
+            if result is True:
+                print("Payment added successfully")
+            else:
+                print(result)
+        elif selection == "4":
+            print("Please, input name of subscription: ", end="")
+            sub_name = input()
+            result = user.assign_subscription_to_user(sub_name)
+            if result is True:
+                print("Subscription purchased successfully")
+            else:
+                print(result)
+        elif selection == "5":
+            for sub in user.get_available_subscriptions():
+                print(f"Name: {sub['name_subscr']}, Duration: {sub['length']} days, Price: {sub['price']} rubles")
+        elif selection == "6":
+            while True:
+                print("\n\n\nAdmin menu:")
+                print("0. Exit")
+                print("1. Add subscription")
+                print("2. Edit subscription")
+                print("3. Delete subscription")
+                print("4. Print subscription")
+                print("5. Issue a subscription")
+                print("6. Set admin status")
+                print("Please, select an action (0/1/2/3/4/5/6): ", end="")
+                selection = input()
+                if selection == "0":
+                    break
+                elif selection == "1" or selection == "2" or selection == "3":
+                    print("Please, input name of subscription: ", end="")
+                    name = input()
+                    if selection == "1" or selection == "2":
+                        print("Please, input length of subscription (in days): ", end="")
+                        length = int(input())
+                        print("Please, input price of subscription (in rubles): ", end="")
+                        price = int(input())
+                        if selection == "1":
+                            result = user.add_subscribe(name, length, price)
+                        else:
+                            result = user.edit_subscribe(name, length, price)
+                        if result is True:
+                            print("Successfully")
+                        else:
+                            print(result)
+                    else:
+                        result = user.delete_subscribe(name)
+                        if result is True:
+                            print("Subscription deleted successfully")
+                        else:
+                            print(result)
+                elif selection == "4":
+                    for sub in user.get_available_subscriptions():
+                        print(f"Name: {sub['name_subscr']}, Duration: {sub['length']} days, Price: {sub['price']} rubles")
+                elif selection == "5":
+                    print("Please, input username of user: ", end="")
+                    target_username = input()
                     print("Please, input length of subscription (in days): ", end="")
                     length = int(input())
-                    print("Please, input price of subscription (in rubles): ", end="")
-                    price = int(input())
-                    if selection == "1":
-                        result = user.add_subscribe(name, length, price)
-                    else:
-                        result = user.edit_subscribe(name, length, price)
+                    result = user.admin_assign_custom_subscription(target_username, length)
                     if result is True:
-                        print("Successfully")
+                        print("Subscription assigned successfully")
                     else:
                         print(result)
-                else:
-                    result = user.delete_subscribe(name)
+                elif selection == "6":
+                    print("Please, input username of user: ", end="")
+                    target_username = input()
+                    print("Please, input status (0 - not admin, 1 - admin): ", end="")
+                    status = int(input())
+                    if status not in [0, 1]:
+                        print("Invalid status")
+                        continue
+                    result = user.set_admin_status(target_username, status)
                     if result is True:
-                        print("Subscription deleted successfully")
+                        print("Status updated successfully")
                     else:
                         print(result)
-            elif selection == "4":
-                for sub in user.get_available_subscriptions():
-                    print(f"Name: {sub['name_subscr']}, Duration: {sub['length']} days, Price: {sub['price']} rubles")

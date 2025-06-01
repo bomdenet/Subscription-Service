@@ -53,9 +53,9 @@ class SubServClient:
             return False
 
 
-    def user_exists(self, username: str) -> bool | None:
+    def user_exists(self, username: str) -> str | bool | None:
         if not self.__check_correct_data(username):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"user_exists|{username}")
         response = self.__get_message()
@@ -68,7 +68,7 @@ class SubServClient:
 
     def check_correct_username(self, username: str) -> str | bool | None:
         if not self.__check_correct_data(username):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"check_correct_username|{username}")
         response = self.__get_message()
@@ -81,7 +81,7 @@ class SubServClient:
     
     def check_correct_password(self, password: str) -> str | bool | None:
         if not self.__check_correct_data(password):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"check_correct_password|{password}")
         response = self.__get_message()
@@ -94,7 +94,7 @@ class SubServClient:
     
     def reg(self, username: str, password: str) -> SubServUser | str | None:
         if not self.__check_correct_data(username) or not self.__check_correct_data(password):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"reg|{username}&{self.__encrypt(password)}")
         response = self.__get_message()
@@ -108,7 +108,7 @@ class SubServClient:
     
     def auth(self, username: str, password: str) -> SubServUser | str | None:
         if not self.__check_correct_data(username) or not self.__check_correct_data(password):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"auth|{username}&{self.__encrypt(password)}")
         response = self.__get_message()

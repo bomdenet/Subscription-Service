@@ -49,6 +49,7 @@ class SubServUser:
         return True
 
 
+    # Получение информации о пользователе
     def get_user_info(self) -> dict | None:
         self.__send_message(f"get_user_info|{self.__id}")
         response = self.__get_message()
@@ -57,6 +58,27 @@ class SubServUser:
         else:
             return None
     
+    def get_user_payments_history(self) -> list | None:
+        self.__send_message(f"get_user_payments_history|{self.__id}")
+        response = self.__get_big_message()
+        
+        if type(response) is list:
+            response = [ast.literal_eval(item) for item in response]
+            return response
+        else:
+            return None
+
+    # Пополнение баланса
+    def add_payment(self, amount: int) -> bool | str | None:    
+        self.__send_message(f"add_payment|{self.__id}&{amount}")
+        response = self.__get_message()
+        if response.lower() == "true":
+            return True
+        elif type(response) is str:
+            return response
+        else:
+            return None
+
 
     # Получить информацию о типах подписок
     def get_available_subscriptions(self) -> list | None:
@@ -69,10 +91,24 @@ class SubServUser:
         else:
             return None
 
+    # Оплата подписки
+    def assign_subscription_to_user(self, subscription_name: str) -> bool | str | None:
+        if not self.__check_correct_data(subscription_name):
+            return "Incorrect data"
+        
+        self.__send_message(f"assign_subscription_to_user|{self.__id}&{subscription_name}")
+        response = self.__get_message()
+        if response.lower() == "true":
+            return True
+        elif type(response) is str:
+            return response
+        else:
+            return None
+
     # Работа с подписками(только для админа)
     def add_subscribe(self, name: str, length: int, price: int) -> bool | str | None:
         if not self.__check_correct_data(name):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"add_subscribe|{self.__id}&{name}&{length}&{price}")
         response = self.__get_message()
@@ -85,7 +121,7 @@ class SubServUser:
     
     def edit_subscribe(self, name: str, length: int, price: int) -> bool | str | None:
         if not self.__check_correct_data(name):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"edit_subscribe|{self.__id}&{name}&{length}&{price}")
         response = self.__get_message()
@@ -98,7 +134,7 @@ class SubServUser:
 
     def delete_subscribe(self, name: str) -> bool | str | None:
         if not self.__check_correct_data(name):
-            return None
+            return "Incorrect data"
         
         self.__send_message(f"delete_subscribe|{self.__id}&{name}")
         response = self.__get_message()
@@ -109,7 +145,33 @@ class SubServUser:
         else:
             return None
 
+    # Выдать другому пользователю подписку(только для админа)
+    def admin_assign_custom_subscription(self, username: str, length: int) -> bool | str | None:
+        if not self.__check_correct_data(username):
+            return "Incorrect data"
+        
+        self.__send_message(f"admin_assign_custom_subscription|{self.__id}&{username}&{length}")
+        response = self.__get_message()
+        if response.lower() == "true":
+            return True
+        elif type(response) is str:
+            return response
+        else:
+            return None
     
+    # Назначить статус админа другому пользователю(только для админа)
+    def set_admin_status(self, username: str, status: int) -> bool | str | None:
+        if not self.__check_correct_data(username) or status not in [0, 1]:
+            return "Incorrect data"
+        
+        self.__send_message(f"set_admin_status|{self.__id}&{username}&{status}")
+        response = self.__get_message()
+        if response.lower() == "true":
+            return True
+        elif type(response) is str:
+            return response
+        else:
+            return None
 
 
     def is_connected(self) -> bool:

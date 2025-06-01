@@ -6,12 +6,6 @@ from .base_data import BaseData
 needs_logs = True
 LOGS_STREAM = "logs.txt"
 
-def print_debug_info():
-    if needs_logs:
-        print("\n\n\n")
-        base_data.print_debug_info()
-        print("\n\n\n")
-
 def write_log(message: str):
     mes = f"[{datetime.now()}] {message}"
     file_logs.write(f"{mes}\n")
@@ -19,8 +13,15 @@ def write_log(message: str):
     if needs_logs:
         print(f"[LOG] {mes}")
 
-def return_answer(message: str) -> str | None:
+def return_answer(message: str) -> list | str | None:
+    if message == "get_available_subscriptions":
+        result = base_data.get_available_subscriptions()
+        result = [f"{i}&" for i in result] + ["end"]
+        return result
+        
     if (len(message.split("|")) < 2):
+        if "get_user_payments_history" in message:
+            return ["end"]
         return "Incorrect data"
     
     type_cmd = message.split("|")[0]
@@ -69,6 +70,30 @@ def return_answer(message: str) -> str | None:
             return "Incorrect data"
         ans = base_data.delete_subscribe(data_cmd[0], data_cmd[1])
         return "true" if ans is None else str(ans)
+    elif type_cmd == "admin_assign_custom_subscription":
+        data_cmd = data_cmd.split("&")
+        if (len(data_cmd) < 3):
+            return "Incorrect data"
+        return str(base_data.admin_assign_custom_subscription(data_cmd[0], data_cmd[1], int(data_cmd[2])))
+    elif type_cmd == "get_user_payments_history":
+        result = base_data.get_user_payments_history(data_cmd)
+        result = [f"{i}&" for i in result] + ["end"]
+        return result
+    elif type_cmd == "set_admin_status":
+        data_cmd = data_cmd.split("&")
+        if (len(data_cmd) < 3):
+            return "Incorrect data"
+        return str(base_data.set_admin_status(data_cmd[0], data_cmd[1], int(data_cmd[2])))
+    elif type_cmd == "assign_subscription_to_user":
+        data_cmd = data_cmd.split("&")
+        if (len(data_cmd) < 2):
+            return "Incorrect data"
+        return str(base_data.assign_subscription_to_user(data_cmd[0], data_cmd[1]))
+    elif type_cmd == "add_payment":
+        data_cmd = data_cmd.split("&")
+        if (len(data_cmd) < 2):
+            return "Incorrect data"
+        return str(base_data.add_payment(data_cmd[0], int(data_cmd[1])))
     else:
         return None
 
@@ -84,14 +109,13 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             
             message = data.decode()
             write_log(f"Received from {addr}: {message}")
+            answer = return_answer(message)
 
-            if message == "get_available_subscriptions":
-                data = base_data.get_available_subscriptions()
-                for i in data:
-                    writer.write((str(i) + "&").encode())
-                writer.write("end".encode())
+            if type(answer) is list:
+                for item in answer:
+                    writer.write(item.encode())
             else:
-                writer.write(str(return_answer(message)).encode())
+                writer.write(str(answer).encode())
                 
             await writer.drain()
     except Exception:

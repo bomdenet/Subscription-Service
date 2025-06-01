@@ -1,9 +1,26 @@
 import sqlite3
 import time
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import hashlib
 
+'''1. __generate_user_id +
+2. __find_user +
+3. user_exists +
+4. check_correct_username +
+5. check_correct_password +
+6. reg +
+7. auth +
+8. add_payment
+9. add_subscribe +
+10. assign_subscription_to_user
+11. admin_assign_custom_subscription +
+12. edit_subscribe +
+13. delete_subscribe +
+14. get_users_with_expiring_subscriptions
+15. get_available_subscriptions
+16. __get_user_info_full
+17. get_user_info +'''
 
 class BaseData:
     def __init__(self, db_name="example.db"):
@@ -118,6 +135,7 @@ class BaseData:
             return Exception("The password is incorrect")
         return user["user_id"]
 
+    ###
     def add_payment(self, user_id, amount):
         if amount <= 0:
             return Exception("Amount must be positive")
@@ -127,7 +145,7 @@ class BaseData:
         if user is None:
             return Exception("User not found")
 
-        timestamp = int(datetime.utcnow().timestamp())
+        timestamp = int(datetime.now(timezone.utc).timestamp())
         self.cursor.execute("""
             INSERT INTO payments (amount, date, user_id, status)
             VALUES (?, ?, ?, 1)
@@ -157,36 +175,6 @@ class BaseData:
             VALUES (?, ?, ?)
         """, (name, length, price))
         self.conn.commit()
-
-    def assign_subscription_to_user(self, user_id, subscription_name):
-        user = self.__get_user_info_full(user_id)
-        if not user:
-            return Exception("User not found")
-
-        self.cursor.execute("SELECT length, price FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
-        row = self.cursor.fetchone()
-        if not row:
-            return Exception("Subscription not found")
-
-        length = row["length"]
-        price = row["price"]
-
-        if user["balance"] < price:
-            return Exception("Not enough balance to purchase this subscription")
-
-        expires_at = int((datetime.utcnow() + timedelta(days=length)).timestamp())
-
-        self.cursor.execute("""
-            UPDATE users 
-            SET 
-                subscription = ?, 
-                subscription_name = ?, 
-                balance = balance - ?
-            WHERE user_id = ?
-        """, (expires_at, subscription_name, price, user_id))
-        self.conn.commit()
-
-        return True
 
     def edit_subscribe(self, user_id, name, new_length, new_price):
         if new_length <= 0 or new_price < 0:
@@ -218,16 +206,75 @@ class BaseData:
             WHERE subscription_name = ?
         """, (name,))
         self.conn.commit()
-    # мб стереть нахуй
+
+    def assign_subscription_to_user(self, user_id, subscription_name):
+        user = self.__get_user_info_full(user_id)
+        if not user:
+            return Exception("User not found")
+
+        self.cursor.execute("SELECT length, price FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
+        row = self.cursor.fetchone()
+        if not row:
+            return Exception("Subscription not found")
+
+        length = row["length"]
+        price = row["price"]
+
+        if user["balance"] < price:
+            return Exception("Not enough balance to purchase this subscription")
+
+        expires_at = int((datetime.now(timezone.utc) + timedelta(days=length)).timestamp())
+
+        self.cursor.execute("""
+            UPDATE users 
+            SET 
+                subscription = ?, 
+                subscription_name = ?, 
+                balance = balance - ?
+            WHERE user_id = ?
+        """, (expires_at, subscription_name, price, user_id))
+        self.conn.commit()
+
+        return True
+
+    def admin_assign_custom_subscription(self, admin_id, target_username, duration_days):
+        # Проверяем, является ли вызывающий — администратором
+        admin_info = self.get_user_info(admin_id)
+        if not admin_info or admin_info["is_admin"] != 1:
+            return Exception("Access denied: only admins can assign subscriptions")
+
+        # Находим целевого пользователя по имени
+        self.cursor.execute("SELECT user_id FROM users WHERE username LIKE ? COLLATE NOCASE", (target_username,))
+        target_user_row = self.cursor.fetchone()
+        if not target_user_row:
+            return Exception(f"User '{target_username}' not found")
+        target_user_id = target_user_row["user_id"]
+
+        # Вычисляем дату окончания подписки
+        expires_at = int((datetime.now(timezone.utc) + timedelta(days=duration_days)).timestamp())
+
+        # Обновляем только дату подписки, subscription_name остаётся без изменений (можно оставить NULL)
+        self.cursor.execute("""
+            UPDATE users 
+            SET 
+                subscription = ?
+            WHERE user_id = ?
+        """, (expires_at, target_user_id))
+
+        self.conn.commit()
+        return True
+    
+    '''
     def get_users_with_expiring_subscriptions(self, within_days: int = 3):
-        now_ts = int(datetime.utcnow().timestamp())
+        now_ts = int(datetime.now(timezone.utc).timestamp())
         future_ts = now_ts + within_days * 86400
         self.cursor.execute("""
             SELECT * FROM users
             WHERE subscription IS NOT NULL AND subscription > 0 AND subscription <= ?
         """, (future_ts,))
         return [dict(row) for row in self.cursor.fetchall()]
-    
+    '''
+
     def get_available_subscriptions(self):
         self.cursor.execute("SELECT name_subscr, price, length FROM subscriptions")
         return [dict(row) for row in self.cursor.fetchall()]
@@ -248,23 +295,6 @@ class BaseData:
                 del user[key]
 
         return user
-
-
-    def print_debug_info(self):
-        print("=== USERS TABLE ===")
-        self.cursor.execute("SELECT * FROM users")
-        for row in self.cursor.fetchall():
-            print(dict(row))
-
-        print("\n=== PAYMENTS TABLE ===")
-        self.cursor.execute("SELECT * FROM payments")
-        for row in self.cursor.fetchall():
-            print(dict(row))
-
-        print("\n=== SUBSCRIPTIONS TABLE ===")
-        self.cursor.execute("SELECT * FROM subscriptions")
-        for row in self.cursor.fetchall():
-            print(dict(row))
 
     # ✅ Новая функция: получить историю платежей пользователя
     def get_user_payments_history(self, user_id):
@@ -292,3 +322,19 @@ class BaseData:
         self.conn.commit()
 
         return True
+    
+    def print_debug_info(self):
+        print("=== USERS TABLE ===")
+        self.cursor.execute("SELECT * FROM users")
+        for row in self.cursor.fetchall():
+            print(dict(row))
+
+        print("\n=== PAYMENTS TABLE ===")
+        self.cursor.execute("SELECT * FROM payments")
+        for row in self.cursor.fetchall():
+            print(dict(row))
+
+        print("\n=== SUBSCRIPTIONS TABLE ===")
+        self.cursor.execute("SELECT * FROM subscriptions")
+        for row in self.cursor.fetchall():
+            print(dict(row))

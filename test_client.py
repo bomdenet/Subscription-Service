@@ -60,6 +60,7 @@ if __name__ == "__main__":
             else:
                 print(user)
 
+
     while True:
         print("\n\n\nMenu:")
         print("0. Exit")

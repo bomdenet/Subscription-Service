@@ -53,6 +53,7 @@ class SubServClient:
             return False
 
 
+    # Проверка на то, существует ли пользователь с данным ником
     def user_exists(self, username: str) -> str | bool | None:
         if not self.__check_correct_data(username):
             return "Incorrect data"
@@ -66,6 +67,7 @@ class SubServClient:
         else:
             return None
 
+    # Проверка на корректность ника
     def check_correct_username(self, username: str) -> str | bool | None:
         if not self.__check_correct_data(username):
             return "Incorrect data"
@@ -79,6 +81,7 @@ class SubServClient:
         else:
             return response
     
+    # Проверка на корректность пароля
     def check_correct_password(self, password: str) -> str | bool | None:
         if not self.__check_correct_data(password):
             return "Incorrect data"
@@ -92,6 +95,7 @@ class SubServClient:
         else:
             return response
     
+    # Регистрация пользователя
     def reg(self, username: str, password: str) -> SubServUser | str | None:
         if not self.__check_correct_data(username) or not self.__check_correct_data(password):
             return "Incorrect data"
@@ -106,6 +110,7 @@ class SubServClient:
             else:
                 return response
     
+    # Авторизация пользователя
     def auth(self, username: str, password: str) -> SubServUser | str | None:
         if not self.__check_correct_data(username) or not self.__check_correct_data(password):
             return "Incorrect data"

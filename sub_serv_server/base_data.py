@@ -4,23 +4,6 @@ import uuid
 from datetime import datetime, timedelta, timezone
 import hashlib
 
-'''1. __generate_user_id +
-2. __find_user +
-3. user_exists +
-4. check_correct_username +
-5. check_correct_password +
-6. reg +
-7. auth +
-8. add_payment
-9. add_subscribe +
-10. assign_subscription_to_user
-11. admin_assign_custom_subscription +
-12. edit_subscribe +
-13. delete_subscribe +
-14. get_users_with_expiring_subscriptions
-15. get_available_subscriptions
-16. __get_user_info_full
-17. get_user_info +'''
 
 class BaseData:
     def __init__(self, db_name="example.db"):
@@ -36,6 +19,7 @@ class BaseData:
         self.__create_users_table()
         self.__create_subscribe_table()
 
+    # Создание таблицы пользователей
     def __create_users_table(self):
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS users (
@@ -51,6 +35,7 @@ class BaseData:
         """)
         self.conn.commit()
 
+    # Создание таблицы платежей
     def __create_payment_table(self):
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS payments (
@@ -64,6 +49,7 @@ class BaseData:
         """)
         self.conn.commit()
 
+    # Создание таблицы подписок
     def __create_subscribe_table(self):
         self.cursor.execute("""
             CREATE TABLE IF NOT EXISTS subscriptions (
@@ -75,19 +61,23 @@ class BaseData:
         """)
         self.conn.commit()
 
+    # Генерация id пользователя
     def __generate_user_id(self):
         raw = f"{time.time()}{uuid.uuid4()}"
         return hashlib.sha256(raw.encode()).hexdigest()[:16]
 
+    # Поиск пользователя в базе данных по username
     def __find_user(self, username):
         self.cursor.execute("SELECT user_id FROM users WHERE username = ?", (username,))
         row = self.cursor.fetchone()
         print(row)
         return row["user_id"] if row else None
-
+    
+    # Проверка, существует ли пользователь
     def user_exists(self, username):
         return self.__find_user(username) is not None
 
+    # Проверка на корректность username
     def check_correct_username(self, username):
         if len(username) < self.min_len_username:
             return Exception(f"The username is too short. Minimum length is {self.min_len_username} characters")
@@ -96,6 +86,7 @@ class BaseData:
                 return Exception("The username contains incorrect characters.")
         return True
 
+    # Проверка на корректность password
     def check_correct_password(self, password):
         if len(password) < self.min_len_password:
             return Exception(f"The password is too short. Minimum length is {self.min_len_password} characters")
@@ -104,6 +95,7 @@ class BaseData:
                 return Exception("The password contains incorrect characters")
         return True
 
+    # Регистрация пользователя
     def reg(self, username, password):
         if (result := self.check_correct_username(username)) is not True:
             return result
@@ -126,6 +118,7 @@ class BaseData:
         self.conn.commit()
         return user_id
 
+    # Авторизация пользователя
     def auth(self, username, password):
         self.cursor.execute("SELECT * FROM users WHERE username = ?", (username,))
         user = self.cursor.fetchone()
@@ -135,7 +128,7 @@ class BaseData:
             return Exception("The password is incorrect")
         return user["user_id"]
 
-    ###
+    # Добавление платежа в таблицу
     def add_payment(self, user_id, amount):
         if amount <= 0:
             return Exception("Amount must be positive")
@@ -159,9 +152,15 @@ class BaseData:
         self.conn.commit()
         return True
 
+    # Добавление подписок в таблицу
     def add_subscribe(self, user_id, name, length, price):
+        
+        if not name or not name.strip() or name == "None":
+            return Exception("Subscription name cannot be empty or None")
+
         if length <= 0 or price < 0:
             return Exception("Invalid length or price")
+
         user = self.__get_user_info_full(user_id)
         if not user or user["is_admin"] < 1:
             return Exception("Access denied")
@@ -176,6 +175,9 @@ class BaseData:
         """, (name, length, price))
         self.conn.commit()
 
+        return True
+    
+    # Редактирование подписки
     def edit_subscribe(self, user_id, name, new_length, new_price):
         if new_length <= 0 or new_price < 0:
             return Exception("Invalid data")
@@ -194,6 +196,7 @@ class BaseData:
         """, (new_length, new_price, name))
         self.conn.commit()
 
+    # Удаление подписки
     def delete_subscribe(self, user_id, name):
         user = self.__get_user_info_full(user_id)
         if not user or user["is_admin"] < 1:
@@ -202,16 +205,20 @@ class BaseData:
         self.cursor.execute("DELETE FROM subscriptions WHERE name_subscr = ?", (name,))
         self.cursor.execute("""
             UPDATE users 
-            SET subscription = 0, subscription_name = NULL 
+            SET subscription_name = NULL 
             WHERE subscription_name = ?
         """, (name,))
         self.conn.commit()
 
+    # Привязка подписки к пользователю
     def assign_subscription_to_user(self, user_id, subscription_name):
+        now = datetime.now(timezone.utc)
+        now_ts = int(now.timestamp())
+
         user = self.__get_user_info_full(user_id)
         if not user:
             return Exception("User not found")
-
+        
         self.cursor.execute("SELECT length, price FROM subscriptions WHERE name_subscr = ?", (subscription_name,))
         row = self.cursor.fetchone()
         if not row:
@@ -222,8 +229,12 @@ class BaseData:
 
         if user["balance"] < price:
             return Exception("Not enough balance to purchase this subscription")
+        
+        # Проверяем, есть ли активная подписка
+        if user["subscription"] > now_ts:
+            return Exception("The subscription is already available")
 
-        expires_at = int((datetime.now(timezone.utc) + timedelta(days=length)).timestamp())
+        expires_at = int((now + timedelta(days=length)).timestamp())
 
         self.cursor.execute("""
             UPDATE users 
@@ -236,7 +247,8 @@ class BaseData:
         self.conn.commit()
 
         return True
-
+    
+    # Админ может добавлять самостоятельно пользователю подписку
     def admin_assign_custom_subscription(self, admin_id, target_username, duration_days):
         # Проверяем, является ли вызывающий — администратором
         admin_info = self.get_user_info(admin_id)
@@ -275,15 +287,18 @@ class BaseData:
         return [dict(row) for row in self.cursor.fetchall()]
     '''
 
+    # Получаение всех доступных подписок
     def get_available_subscriptions(self):
         self.cursor.execute("SELECT name_subscr, price, length FROM subscriptions")
         return [dict(row) for row in self.cursor.fetchall()]
-
+    
+    # Получение всей информации о пользователе
     def __get_user_info_full(self, user_id):
         self.cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
         row = self.cursor.fetchone()
         return dict(row) if row else None
 
+    # Получение необходимой информации о пользователе
     def get_user_info(self, user_id):
         user = self.__get_user_info_full(user_id)
         if not user:
@@ -296,12 +311,21 @@ class BaseData:
 
         return user
 
-    # ✅ Новая функция: получить историю платежей пользователя
+    # получить историю платежей пользователя
     def get_user_payments_history(self, user_id):
         self.cursor.execute("SELECT * FROM payments WHERE user_id = ?", (user_id,))
-        return [dict(row) for row in self.cursor.fetchall()]
+        rows = self.cursor.fetchall()
 
-    # ✅ Назначение админа
+        result = []
+        for row in rows:
+            payment_dict = dict(row)
+            payment_dict.pop("user_id", None)
+            payment_dict.pop("status", None)
+            result.append(payment_dict)
+
+        return result
+
+    # Назначение админа
     def set_admin_status(self, admin_id, target_username, is_admin):
 
         # Проверяем права у текущего пользователя
@@ -323,6 +347,7 @@ class BaseData:
 
         return True
     
+    '''
     def print_debug_info(self):
         print("=== USERS TABLE ===")
         self.cursor.execute("SELECT * FROM users")
@@ -338,3 +363,4 @@ class BaseData:
         self.cursor.execute("SELECT * FROM subscriptions")
         for row in self.cursor.fetchall():
             print(dict(row))
+    '''

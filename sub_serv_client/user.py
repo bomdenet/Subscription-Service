@@ -69,7 +69,7 @@ class SubServUser:
             return None
 
     # Пополнение баланса
-    def add_payment(self, amount: int) -> bool | str | None:    
+    def add_payment(self, amount: int) -> bool | str | None:
         self.__send_message(f"add_payment|{self.__id}&{amount}")
         response = self.__get_message()
         if response.lower() == "true":
